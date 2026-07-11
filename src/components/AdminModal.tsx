@@ -4,15 +4,8 @@ import {
   X, 
   Settings, 
   RefreshCw, 
-  Check, 
   Trash2, 
-  FileSpreadsheet, 
   Lock, 
-  AlertCircle,
-  ExternalLink,
-  ChevronRight,
-  Clipboard,
-  ShieldAlert,
   KeyRound,
   Eye,
   EyeOff
@@ -40,10 +33,7 @@ export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   
   // Settings state
-  const [googleSheetsUrl, setGoogleSheetsUrl] = useState('');
   const [adminPasscode, setAdminPasscode] = useState('1234');
-  const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Security Lock state
   const [isUnlocked, setIsUnlocked] = useState(() => {
@@ -55,16 +45,13 @@ export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
   const [newPasscodeInput, setNewPasscodeInput] = useState('');
   const [isUpdatingPasscode, setIsUpdatingPasscode] = useState(false);
 
-  // Copied indicator state
-  const [copied, setCopied] = useState(false);
-
   // Load settings and contacts
   const loadSettingsAndContacts = async () => {
+    setIsLoading(true);
     try {
       const settingsRes = await fetch('/api/settings');
       if (settingsRes.ok) {
         const settingsData = await settingsRes.json();
-        if (settingsData.googleSheetsUrl) setGoogleSheetsUrl(settingsData.googleSheetsUrl);
         if (settingsData.adminPasscode) {
           setAdminPasscode(settingsData.adminPasscode);
         }
@@ -77,6 +64,8 @@ export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
       }
     } catch (error) {
       console.error('Error loading admin data:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -87,54 +76,6 @@ export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
       setLoginError('');
     }
   }, [isOpen]);
-
-  // Google Apps Script template for Huy to copy
-  const appsScriptCode = `function doPost(e) {
-  try {
-    var data = JSON.parse(e.postData.contents);
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    
-    // Tạo dòng tiêu đề nếu bảng tính trống
-    if (sheet.getLastRow() === 0) {
-      sheet.appendRow([
-        "Họ", 
-        "Tên", 
-        "Danh xưng", 
-        "Số điện thoại", 
-        "Email", 
-        "Ghi chú", 
-        "Muốn nói chuyện với Huy?", 
-        "Thời gian gửi"
-      ]);
-      // Định dạng đậm cho tiêu đề
-      sheet.getRange("A1:H1").setFontWeight("bold").setBackground("#F2F2F7");
-    }
-    
-    // Thêm dữ liệu liên hệ mới
-    sheet.appendRow([
-      data.lastName || "",
-      data.firstName || "",
-      data.pronouns || "",
-      data.phones || "",
-      data.emails || "",
-      data.notes || "",
-      data.talkToHuy || "Không",
-      data.createdAt || new Date().toISOString()
-    ]);
-    
-    return ContentService.createTextOutput(JSON.stringify({ status: "success" }))
-      .setMimeType(ContentService.MimeType.JSON);
-  } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", error: error.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-}`;
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(appsScriptCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   // Unlock Admin panel
   const handleUnlock = (e: React.FormEvent) => {
@@ -155,36 +96,6 @@ export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
     setPasscodeInput('');
   };
 
-  // Save Settings to server (Vercel/Firestore)
-  const handleSaveSettings = async () => {
-    setIsSavingSettings(true);
-    setSaveSuccess(false);
-    try {
-      const response = await fetch('/api/settings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          googleSheetsUrl: googleSheetsUrl.trim(),
-          adminPasscode: adminPasscode
-        }),
-      });
-
-      if (response.ok) {
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
-      } else {
-        throw new Error('Lỗi lưu cấu hình');
-      }
-    } catch (error) {
-      console.error('Error saving settings:', error);
-      alert('Không thể lưu cấu hình về máy chủ.');
-    } finally {
-      setIsSavingSettings(false);
-    }
-  };
-
   // Update passcode
   const handleUpdatePasscode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -197,7 +108,6 @@ export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          googleSheetsUrl: googleSheetsUrl,
           adminPasscode: newPasscodeInput.trim()
         }),
       });
@@ -262,7 +172,7 @@ export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
                     <span>Quản trị của Huy</span>
                   </h3>
                   <p className="text-xs text-[#8E8E93] mt-0.5">
-                    {isUnlocked ? 'Cấu hình đồng bộ & Danh sách dữ liệu' : 'Bảo mật quyền truy cập'}
+                    {isUnlocked ? 'Danh sách dữ liệu liên hệ' : 'Bảo mật quyền truy cập'}
                   </p>
                 </div>
                 <button
@@ -329,107 +239,30 @@ export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
                 /* Unlocked Admin Panel Content */
                 <div className="flex-1 overflow-y-auto p-4 ios-scroll space-y-5">
                   
-                  {/* 1. Auto Sync Configuration Card */}
-                  <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-xs border border-neutral-200/40 dark:border-neutral-800/40 space-y-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-xl bg-[#34C759]/10 text-[#34C759]">
-                        <FileSpreadsheet size={22} />
-                      </div>
-                      <div>
-                        <h4 className="text-[15px] font-bold text-black dark:text-white">
-                          Liên kết Google Sheets tự động
-                        </h4>
-                        <p className="text-xs text-[#8E8E93]">
-                          Không cần đăng nhập, tự động đồng bộ ngay lập tức!
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3.5 pt-1.5">
-                      {/* Web App URL Input */}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
-                          Google Sheets Web App URL:
-                        </label>
-                        <input
-                          type="url"
-                          value={googleSheetsUrl}
-                          onChange={(e) => setGoogleSheetsUrl(e.target.value)}
-                          placeholder="https://script.google.com/macros/s/.../exec"
-                          className="w-full py-2.5 px-3 rounded-xl bg-[#F2F2F7] dark:bg-black border border-neutral-200/40 dark:border-neutral-800/40 text-xs font-mono focus:outline-hidden focus:ring-1 focus:ring-ios-accent"
-                        />
-                      </div>
-
-                      {/* Save Button */}
-                      <button
-                        onClick={handleSaveSettings}
-                        disabled={isSavingSettings}
-                        className="w-full py-2.5 bg-ios-accent text-white font-bold text-xs rounded-xl hover:bg-ios-accent/90 active:scale-98 transition-all flex items-center justify-center gap-1.5"
-                      >
-                        {isSavingSettings ? (
-                          <RefreshCw size={14} className="animate-spin" />
-                        ) : saveSuccess ? (
-                          <Check size={14} />
-                        ) : null}
-                        <span>{isSavingSettings ? 'Đang lưu...' : saveSuccess ? 'Đã lưu thành công!' : 'Lưu URL cấu hình'}</span>
-                      </button>
-
-                      {/* Apps Script Guide */}
-                      <div className="p-3 bg-[#F2F2F7] dark:bg-black/40 rounded-xl border border-neutral-200/30 dark:border-neutral-800/30 space-y-2.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-bold text-ios-accent uppercase tracking-wider">
-                            Hướng dẫn thiết lập (30 giây)
-                          </span>
-                          <button
-                            onClick={copyToClipboard}
-                            className="text-[11px] text-neutral-500 hover:text-ios-accent flex items-center gap-1 transition-colors"
-                          >
-                            <Clipboard size={12} />
-                            <span>{copied ? 'Đã copy!' : 'Sao chép mã'}</span>
-                          </button>
-                        </div>
-                        
-                        <ol className="text-[11px] text-[#8E8E93] list-decimal pl-4 space-y-1.5 leading-relaxed">
-                          <li>Mở <a href="https://sheets.google.com" target="_blank" rel="noreferrer" className="text-ios-accent underline inline-flex items-center gap-0.5">Google Sheets<ExternalLink size={10} /></a> và tạo 1 file trống mới.</li>
-                          <li>Chọn menu <span className="font-semibold text-black dark:text-white">Tiện ích mở rộng (Extensions)</span> → <span className="font-semibold text-black dark:text-white">Apps Script</span>.</li>
-                          <li>Xóa hết code có sẵn đi, dán toàn bộ đoạn code phía trên vào rồi lưu lại.</li>
-                          <li>Nhấn nút <span className="font-semibold text-black dark:text-white">Triển khai (Deploy)</span> ở góc trên bên phải → <span className="font-semibold text-black dark:text-white">Triển khai mới (New deployment)</span>.</li>
-                          <li>Chọn loại là <span className="font-semibold text-black dark:text-white">Ứng dụng Web (Web app)</span>.</li>
-                          <li>Đặt cấu hình: 
-                            <ul className="list-disc pl-4 mt-0.5 space-y-0.5">
-                              <li>Quyền thực thi (Execute as): <span className="font-semibold text-black dark:text-white">Tôi (Me)</span></li>
-                              <li>Ai có quyền truy cập (Who has access): <span className="font-semibold text-black dark:text-white">Bất kỳ ai (Anyone)</span></li>
-                            </ul>
-                          </li>
-                          <li>Nhấn nút Triển khai (Deploy), cấp quyền nếu có, sau đó <span className="font-semibold text-black dark:text-white">sao chép URL Ứng dụng Web</span> và dán vào ô nhập bên trên của bạn!</li>
-                        </ol>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 2. Submissions list */}
-                  <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-xs border border-neutral-200/40 dark:border-neutral-800/40">
-                    <div className="px-4 py-3 border-b border-[#D1D1D6]/40 dark:border-[#38383A]/40 flex items-center justify-between">
+                  {/* Contacts List Card */}
+                  <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-xs border border-neutral-200/40 dark:border-neutral-800/40 flex flex-col h-[320px]">
+                    <div className="px-4 py-3 border-b border-[#D1D1D6]/40 dark:border-[#38383A]/40 flex items-center justify-between bg-neutral-50 dark:bg-neutral-900/50 shrink-0">
                       <span className="text-[13px] font-bold text-black dark:text-white">
-                        Danh sách liên hệ đã gửi ({contacts.length})
+                        Danh sách liên hệ đã nhận ({contacts.length})
                       </span>
                       <button
                         onClick={loadSettingsAndContacts}
                         disabled={isLoading}
                         className="p-1 text-ios-accent hover:opacity-80 transition-opacity"
+                        title="Tải lại danh sách"
                       >
                         <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
                       </button>
                     </div>
 
-                    <div className="divide-y divide-[#D1D1D6]/30 dark:divide-[#38383A]/30 max-h-[220px] overflow-y-auto ios-scroll">
+                    <div className="divide-y divide-[#D1D1D6]/30 dark:divide-[#38383A]/30 flex-1 overflow-y-auto ios-scroll">
                       {contacts.length === 0 ? (
-                        <div className="p-8 text-center text-xs text-[#8E8E93]">
+                        <div className="p-8 text-center text-xs text-[#8E8E93] h-full flex flex-col justify-center items-center">
                           Chưa có liên hệ nào được gửi tới máy chủ.
                         </div>
                       ) : (
                         contacts.map((c) => (
-                          <div key={c.id} className="p-3 flex items-start justify-between text-left gap-2">
+                          <div key={c.id} className="p-3 flex items-start justify-between text-left gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-900/30 transition-colors">
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-bold text-black dark:text-white truncate">
                                 {c.lastName} {c.firstName} {c.pronouns && <span className="text-xs font-normal text-[#8E8E93] ml-1">({c.pronouns})</span>}
@@ -448,18 +281,18 @@ export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
                               )}
 
                               {c.notes && (
-                                <p className="text-[11px] text-neutral-500 italic mt-1 bg-neutral-50 dark:bg-neutral-900 p-1.5 rounded-lg">
+                                <p className="text-[11px] text-neutral-500 italic mt-1 bg-neutral-50 dark:bg-neutral-900/60 p-2 rounded-lg border border-neutral-100/50 dark:border-neutral-800/30">
                                   📝 {c.notes}
                                 </p>
                               )}
                               
                               {c.talkToHuy && (
-                                <p className="text-[10px] text-ios-accent font-semibold mt-1">
+                                <p className="text-[10px] text-ios-accent font-semibold mt-1 bg-ios-accent/5 py-0.5 px-1.5 rounded inline-block">
                                   ❤️ Muốn nói chuyện với Huy!
                                 </p>
                               )}
 
-                              <p className="text-[9px] text-[#8E8E93] mt-1.5">
+                              <p className="text-[9px] text-[#8E8E93] mt-2">
                                 Đã gửi lúc: {new Date(c.createdAt).toLocaleString('vi-VN')}
                               </p>
                             </div>
@@ -477,7 +310,7 @@ export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
                     </div>
                   </div>
 
-                  {/* 3. Security Settings Card */}
+                  {/* Passcode Security Settings Card */}
                   <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-xs border border-neutral-200/40 dark:border-neutral-800/40 space-y-3">
                     <div className="flex items-center gap-3">
                       <div className="p-2.5 rounded-xl bg-ios-red/10 text-ios-red">
@@ -504,7 +337,7 @@ export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
                       <button
                         type="submit"
                         disabled={isUpdatingPasscode}
-                        className="px-4 bg-neutral-200 dark:bg-[#2C2C2E] text-black dark:text-white font-bold text-xs rounded-xl hover:opacity-90 active:scale-95 transition-all shrink-0"
+                        className="px-4 bg-neutral-200 dark:bg-[#2C2C2E] text-black dark:text-white font-bold text-xs rounded-xl hover:opacity-90 active:scale-95 transition-all shrink-0 cursor-pointer"
                       >
                         {isUpdatingPasscode ? 'Đang cập nhật...' : 'Đổi mã'}
                       </button>

@@ -28,14 +28,14 @@ try {
 app.get("/api/settings", async (req, res) => {
   try {
     if (!db) {
-      return res.json({ googleSheetsUrl: "", adminPasscode: "1234" });
+      return res.json({ adminPasscode: "1234" });
     }
     const settingsRef = doc(db, "settings", "config");
     const docSnap = await getDoc(settingsRef);
     if (docSnap.exists()) {
       res.json(docSnap.data());
     } else {
-      res.json({ googleSheetsUrl: "", adminPasscode: "1234" });
+      res.json({ adminPasscode: "1234" });
     }
   } catch (error: any) {
     console.error("Error reading settings:", error);
@@ -49,10 +49,9 @@ app.post("/api/settings", async (req, res) => {
     if (!db) {
       return res.status(500).json({ error: "Database not configured on server" });
     }
-    const { googleSheetsUrl, adminPasscode } = req.body;
+    const { adminPasscode } = req.body;
     const settingsRef = doc(db, "settings", "config");
     await setDoc(settingsRef, {
-      googleSheetsUrl: googleSheetsUrl || "",
       adminPasscode: adminPasscode || "1234"
     }, { merge: true });
     res.json({ success: true });
@@ -122,38 +121,6 @@ app.post("/api/contacts", async (req, res) => {
       id: docRef.id,
       ...newContact
     };
-
-    // Auto-forward contact to Google Sheets Apps Script Web App if configured
-    try {
-      const settingsRef = doc(db, "settings", "config");
-      const settingsSnap = await getDoc(settingsRef);
-      if (settingsSnap.exists()) {
-        const { googleSheetsUrl } = settingsSnap.data();
-        if (googleSheetsUrl && googleSheetsUrl.trim().startsWith("https://script.google.com")) {
-          const phonesStr = newContact.phones.map((p: any) => `${p.label}: ${p.value}`).join(", ");
-          const emailsStr = newContact.emails.map((e: any) => `${e.label}: ${e.value}`).join(", ");
-          
-          await fetch(googleSheetsUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              firstName: newContact.firstName,
-              lastName: newContact.lastName,
-              pronouns: newContact.pronouns,
-              phones: phonesStr,
-              emails: emailsStr,
-              notes: newContact.notes,
-              talkToHuy: newContact.talkToHuy ? "Có" : "Không",
-              createdAt: newContact.createdAt
-            })
-          });
-        }
-      }
-    } catch (sheetError) {
-      console.error("Error auto-syncing to Google Sheets URL:", sheetError);
-    }
     
     res.status(201).json(savedContact);
   } catch (error: any) {
