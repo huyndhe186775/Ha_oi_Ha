@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "SF Pro", "Inter", system-ui, -apple-system, sans-serif;
+  --color-ios-accent: #007AFF;
+  --color-ios-red: #FF3B30;
+  --color-ios-green: #34C759;
+  
+  /* Light Mode values */
+  --color-ios-bg: #F2F2F7;
+  --color-ios-card: #FFFFFF;
+  --color-ios-separator: #D1D1D6;
+  --color-ios-text-primary: #000000;
+  --color-ios-text-secondary: #8E8E93;
+  --color-ios-input-bg: #F2F2F7;
+}
+
+/* Base custom definitions and dark mode support */
+@layer base {
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Smooth iOS scrollbar inside mockup */
+  .ios-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .ios-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .ios-scroll::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.15);
+    border-radius: 9999px;
+  }
+  .dark .ios-scroll::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.2);
+  }
+
+  /* Fade transition for custom items */
+  .ios-transition {
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
+  }
+}
+
+/* Form layout patterns */
+.ios-card {
+  background-color: var(--color-ios-card);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.ios-row {
+  display: flex;
+  align-items: center;
+  padding: 11px 16px;
+  min-height: 44px;
+  position: relative;
+}
+
+.ios-row:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 16px;
+  right: 0;
+  height: 0.5px;
+  background-color: var(--color-ios-separator);
+}
+
+.dark {
+  --color-ios-bg: #000000;
+  --color-ios-card: #1C1C1E;
+  --color-ios-separator: #38383A;
+  --color-ios-text-primary: #FFFFFF;
+  --color-ios-text-secondary: #8E8E93;
+  --color-ios-input-bg: #2C2C2E;
+}

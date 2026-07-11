@@ -1,0 +1,6 @@
+{
+  "name": "iPhone Contact Form",
+  "description": "A pixel-perfect, Apple-inspired responsive contact creation web form modeled after the native iOS Contacts app, featuring dynamic list additions, editable labels, validation, dark mode, and JSON export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
