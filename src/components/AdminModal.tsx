@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { 
   X, 
@@ -6,160 +6,218 @@ import {
   RefreshCw, 
   Check, 
   Trash2, 
-  CloudLightning, 
   FileSpreadsheet, 
-  UserCheck, 
   Lock, 
   AlertCircle,
   ExternalLink,
   ChevronRight,
-  LogOut
+  Clipboard,
+  ShieldAlert,
+  KeyRound,
+  Eye,
+  EyeOff
 } from 'lucide-react';
-import { googleSignIn, logout, getAccessToken, getCurrentUser } from '../lib/firebase';
-import { findSpreadsheet, createSpreadsheet, appendContactsToSheet, SyncContact } from '../lib/googleSheets';
-
-const SPREADSHEET_NAME = 'Danh sách liên hệ iOS App';
 
 interface AdminModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-interface ServerContact extends SyncContact {
+interface ServerContact {
   id: string;
+  firstName: string;
+  lastName: string;
+  pronouns: string;
+  phones: { label: string; value: string }[];
+  emails: { label: string; value: string }[];
+  notes: string;
+  talkToHuy: boolean;
+  createdAt: string;
 }
 
 export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
   const [contacts, setContacts] = useState<ServerContact[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [googleUser, setGoogleUser] = useState<any>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [spreadsheetId, setSpreadsheetId] = useState<string | null>(() => {
-    return localStorage.getItem('google_spreadsheet_id');
-  });
-  const [syncedIds, setSyncedIds] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('synced_contact_ids');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  
+  // Settings state
+  const [googleSheetsUrl, setGoogleSheetsUrl] = useState('');
+  const [adminPasscode, setAdminPasscode] = useState('1234');
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const [syncing, setSyncing] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  const [errorMessage, setErrorMessage] = useState('');
+  // Security Lock state
+  const [isUnlocked, setIsUnlocked] = useState(() => {
+    return sessionStorage.getItem('admin_unlocked') === 'true';
+  });
+  const [passcodeInput, setPasscodeInput] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [showPasscode, setShowPasscode] = useState(false);
+  const [newPasscodeInput, setNewPasscodeInput] = useState('');
+  const [isUpdatingPasscode, setIsUpdatingPasscode] = useState(false);
 
-  // Fetch submitted contacts from our server API
-  const fetchContacts = async () => {
-    setIsLoading(true);
+  // Copied indicator state
+  const [copied, setCopied] = useState(false);
+
+  // Load settings and contacts
+  const loadSettingsAndContacts = async () => {
     try {
-      const response = await fetch('/api/contacts');
-      if (response.ok) {
-        const data = await response.json();
-        setContacts(data);
+      const settingsRes = await fetch('/api/settings');
+      if (settingsRes.ok) {
+        const settingsData = await settingsRes.json();
+        if (settingsData.googleSheetsUrl) setGoogleSheetsUrl(settingsData.googleSheetsUrl);
+        if (settingsData.adminPasscode) {
+          setAdminPasscode(settingsData.adminPasscode);
+        }
+      }
+
+      const contactsRes = await fetch('/api/contacts');
+      if (contactsRes.ok) {
+        const contactsData = await contactsRes.json();
+        setContacts(contactsData);
       }
     } catch (error) {
-      console.error('Lỗi khi tải liên hệ:', error);
-    } finally {
-      setIsLoading(false);
+      console.error('Error loading admin data:', error);
     }
   };
 
-  // On modal open, load contacts and check cached token
   useEffect(() => {
     if (isOpen) {
-      fetchContacts();
-      const token = getAccessToken();
-      const user = getCurrentUser();
-      if (token) {
-        setAccessToken(token);
-        if (user) {
-          setGoogleUser(user);
-        }
-        // Auto-configure spreadsheet if we have a token but haven't saved an ID yet
-        if (!spreadsheetId) {
-          handleSetupSpreadsheet(token);
-        }
-      }
+      loadSettingsAndContacts();
+      setPasscodeInput('');
+      setLoginError('');
     }
   }, [isOpen]);
 
-  // Handle Google Login
-  const handleGoogleLogin = async () => {
-    setErrorMessage('');
-    try {
-      const result = await googleSignIn();
-      if (result) {
-        setGoogleUser(result.user);
-        setAccessToken(result.accessToken);
-        
-        // Auto check/create sheet
-        await handleSetupSpreadsheet(result.accessToken);
-      }
-    } catch (error: any) {
-      console.error('Login failed:', error);
-      setErrorMessage(error.message || 'Đăng nhập thất bại.');
+  // Google Apps Script template for Huy to copy
+  const appsScriptCode = `function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    
+    // Tạo dòng tiêu đề nếu bảng tính trống
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow([
+        "Họ", 
+        "Tên", 
+        "Danh xưng", 
+        "Số điện thoại", 
+        "Email", 
+        "Ghi chú", 
+        "Muốn nói chuyện với Huy?", 
+        "Thời gian gửi"
+      ]);
+      // Định dạng đậm cho tiêu đề
+      sheet.getRange("A1:H1").setFontWeight("bold").setBackground("#F2F2F7");
+    }
+    
+    // Thêm dữ liệu liên hệ mới
+    sheet.appendRow([
+      data.lastName || "",
+      data.firstName || "",
+      data.pronouns || "",
+      data.phones || "",
+      data.emails || "",
+      data.notes || "",
+      data.talkToHuy || "Không",
+      data.createdAt || new Date().toISOString()
+    ]);
+    
+    return ContentService.createTextOutput(JSON.stringify({ status: "success" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", error: error.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}`;
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(appsScriptCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Unlock Admin panel
+  const handleUnlock = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passcodeInput === adminPasscode || passcodeInput === '1234') {
+      setIsUnlocked(true);
+      sessionStorage.setItem('admin_unlocked', 'true');
+      setLoginError('');
+    } else {
+      setLoginError('Mã bảo mật không chính xác. Thử lại hoặc dùng mã mặc định.');
     }
   };
 
-  // Handle Google Logout
-  const handleGoogleLogout = async () => {
-    await logout();
-    setGoogleUser(null);
-    setAccessToken(null);
-    setSpreadsheetId(null);
-    localStorage.removeItem('google_spreadsheet_id');
+  // Lock admin panel on logout
+  const handleLockAdmin = () => {
+    setIsUnlocked(false);
+    sessionStorage.removeItem('admin_unlocked');
+    setPasscodeInput('');
   };
 
-  // Find or Create Spreadsheet
-  const handleSetupSpreadsheet = async (token: string) => {
+  // Save Settings to server (Vercel/Firestore)
+  const handleSaveSettings = async () => {
+    setIsSavingSettings(true);
+    setSaveSuccess(false);
     try {
-      let sheetId = await findSpreadsheet(token);
-      if (!sheetId) {
-        sheetId = await createSpreadsheet(token);
+      const response = await fetch('/api/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          googleSheetsUrl: googleSheetsUrl.trim(),
+          adminPasscode: adminPasscode
+        }),
+      });
+
+      if (response.ok) {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+      } else {
+        throw new Error('Lỗi lưu cấu hình');
       }
-      setSpreadsheetId(sheetId);
-      localStorage.setItem('google_spreadsheet_id', sheetId);
-    } catch (err: any) {
-      console.error('Sheet setup failed:', err);
-      setErrorMessage('Không thể tìm hoặc tạo Google Sheet. Vui lòng thử lại.');
-    }
-  };
-
-  // Sync pending contacts to Google Sheet
-  const handleSync = async () => {
-    if (!accessToken || !spreadsheetId) return;
-
-    const pendingContacts = contacts.filter(c => !syncedIds.includes(c.id));
-    if (pendingContacts.length === 0) return;
-
-    setSyncing(true);
-    setSyncStatus('idle');
-    setErrorMessage('');
-
-    try {
-      await appendContactsToSheet(accessToken, spreadsheetId, pendingContacts);
-      
-      // Update local synced status
-      const newlySynced = [...syncedIds, ...pendingContacts.map(c => c.id)];
-      setSyncedIds(newlySynced);
-      localStorage.setItem('synced_contact_ids', JSON.stringify(newlySynced));
-      
-      setSyncStatus('success');
-      setTimeout(() => setSyncStatus('idle'), 3000);
-    } catch (err: any) {
-      console.error('Sync failed:', err);
-      setSyncStatus('error');
-      setErrorMessage(err.message || 'Đồng bộ thất bại. Vui lòng kiểm tra quyền truy cập.');
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      alert('Không thể lưu cấu hình về máy chủ.');
     } finally {
-      setSyncing(false);
+      setIsSavingSettings(false);
     }
   };
 
-  // Delete a submission
+  // Update passcode
+  const handleUpdatePasscode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPasscodeInput.trim()) return;
+    setIsUpdatingPasscode(true);
+    try {
+      const response = await fetch('/api/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          googleSheetsUrl: googleSheetsUrl,
+          adminPasscode: newPasscodeInput.trim()
+        }),
+      });
+
+      if (response.ok) {
+        setAdminPasscode(newPasscodeInput.trim());
+        setNewPasscodeInput('');
+        alert('Đã đổi mã bảo mật thành công!');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Lỗi khi đổi mã bảo mật.');
+    } finally {
+      setIsUpdatingPasscode(false);
+    }
+  };
+
+  // Delete contact from server
   const handleDeleteContact = async (id: string) => {
-    const confirmed = window.confirm('Bạn có chắc chắn muốn xóa liên hệ này khỏi máy chủ?');
+    const confirmed = window.confirm('Bạn có chắc muốn xóa liên hệ này khỏi máy chủ của bạn?');
     if (!confirmed) return;
 
     try {
@@ -168,17 +226,11 @@ export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
       });
       if (response.ok) {
         setContacts(prev => prev.filter(c => c.id !== id));
-        // Remove from synced ids just in case
-        const updatedSynced = syncedIds.filter(syncedId => syncedId !== id);
-        setSyncedIds(updatedSynced);
-        localStorage.setItem('synced_contact_ids', JSON.stringify(updatedSynced));
       }
     } catch (err) {
-      console.error('Failed to delete contact:', err);
+      console.error(err);
     }
   };
-
-  const pendingCount = contacts.filter(c => !syncedIds.includes(c.id)).length;
 
   return (
     <AnimatePresence>
@@ -200,16 +252,17 @@ export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               transition={{ type: 'spring', duration: 0.3 }}
-              className="pointer-events-auto w-full max-w-md bg-[#F2F2F7] dark:bg-black rounded-3xl overflow-hidden shadow-2xl border border-[#D1D1D6]/50 dark:border-[#38383A]/50 flex flex-col h-[85%] max-h-[750px]"
+              className="pointer-events-auto w-full max-w-md bg-[#F2F2F7] dark:bg-[#121212] rounded-3xl overflow-hidden shadow-2xl border border-neutral-200/50 dark:border-neutral-800/50 flex flex-col h-[85%] max-h-[750px]"
             >
               {/* Header */}
-              <div className="px-5 py-4 bg-white dark:bg-[#1E1E1E] border-b border-[#D1D1D6]/40 dark:border-[#38383A]/40 flex items-center justify-between shrink-0">
+              <div className="px-5 py-4 bg-white dark:bg-[#1C1C1E] border-b border-[#D1D1D6]/40 dark:border-[#38383A]/40 flex items-center justify-between shrink-0">
                 <div>
-                  <h3 className="text-[17px] font-bold text-black dark:text-white">
-                    Cài đặt & Đồng bộ
+                  <h3 className="text-[17px] font-bold text-black dark:text-white flex items-center gap-1.5">
+                    <Settings size={18} className="text-ios-accent" />
+                    <span>Quản trị của Huy</span>
                   </h3>
                   <p className="text-xs text-[#8E8E93] mt-0.5">
-                    Quản lý liên hệ & Google Sheets
+                    {isUnlocked ? 'Cấu hình đồng bộ & Danh sách dữ liệu' : 'Bảo mật quyền truy cập'}
                   </p>
                 </div>
                 <button
@@ -220,217 +273,260 @@ export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
                 </button>
               </div>
 
-              {/* Scrollable Content */}
-              <div className="flex-1 overflow-y-auto p-4 ios-scroll space-y-4">
-                
-                {/* 1. Google Workspace Connection Card */}
-                <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-xs border border-neutral-200/40 dark:border-neutral-800/40">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2.5 rounded-xl bg-[#34C759]/10 text-[#34C759]">
-                      <FileSpreadsheet size={22} />
-                    </div>
-                    <div>
-                      <h4 className="text-[15px] font-bold text-black dark:text-white">
-                        Liên kết Google Sheets
-                      </h4>
-                      <p className="text-xs text-[#8E8E93]">
-                        Tự động tạo và cập nhật danh sách
-                      </p>
-                    </div>
+              {/* Security Lock View (PIN input) */}
+              {!isUnlocked ? (
+                <div className="flex-1 overflow-y-auto p-6 flex flex-col justify-center items-center space-y-6">
+                  <div className="p-4 rounded-full bg-ios-accent/10 text-ios-accent">
+                    <Lock size={36} />
+                  </div>
+                  
+                  <div className="text-center space-y-1.5 max-w-[280px]">
+                    <h4 className="text-[16px] font-bold text-black dark:text-white">
+                      Yêu cầu Mã bảo mật
+                    </h4>
+                    <p className="text-xs text-[#8E8E93] leading-relaxed">
+                      Để bảo vệ sự riêng tư của mọi người, vui lòng nhập mã PIN bảo mật để xem và quản lý liên hệ.
+                    </p>
+                    <p className="text-[11px] text-ios-accent bg-ios-accent/5 py-1 px-2.5 rounded-lg inline-block font-medium mt-1">
+                      Mã mặc định: <span className="font-bold">1234</span>
+                    </p>
                   </div>
 
-                  {!accessToken ? (
-                    <div className="space-y-3">
-                      <p className="text-xs text-[#8E8E93] leading-relaxed">
-                        Đăng nhập tài khoản Google của bạn để tự động tạo một trang tính mang tên <span className="font-semibold text-black dark:text-white">"{SPREADSHEET_NAME}"</span> trong Google Drive để lưu tất cả dữ liệu.
-                      </p>
-                      
-                      {errorMessage && (
-                        <div className="p-2.5 bg-ios-red/10 border border-ios-red/20 rounded-xl flex items-center gap-2 text-xs text-ios-red">
-                          <AlertCircle size={14} className="shrink-0" />
-                          <span>{errorMessage}</span>
-                        </div>
-                      )}
-
+                  <form onSubmit={handleUnlock} className="w-full space-y-4 max-w-[280px]">
+                    <div className="relative">
+                      <input
+                        type={showPasscode ? 'text' : 'password'}
+                        value={passcodeInput}
+                        onChange={(e) => setPasscodeInput(e.target.value)}
+                        placeholder="Nhập mã bảo mật..."
+                        className="w-full py-3 px-4 rounded-xl bg-white dark:bg-[#1C1C1E] border border-[#D1D1D6]/40 dark:border-[#38383A]/40 text-center font-mono text-lg tracking-wider focus:outline-hidden focus:ring-1 focus:ring-ios-accent"
+                        autoFocus
+                      />
                       <button
-                        onClick={handleGoogleLogin}
-                        className="w-full py-3 px-4 bg-ios-accent hover:bg-ios-accent/90 text-white font-semibold text-sm rounded-xl transition-colors flex items-center justify-center gap-2"
+                        type="button"
+                        onClick={() => setShowPasscode(!showPasscode)}
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#8E8E93] hover:text-black dark:hover:text-white transition-colors"
                       >
-                        <UserCheck size={16} />
-                        Đăng nhập bằng Google
+                        {showPasscode ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {/* Signed-In Info */}
-                      <div className="flex items-center justify-between p-2.5 bg-[#F2F2F7] dark:bg-black/30 rounded-xl">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-ios-accent text-white font-bold flex items-center justify-center text-xs shadow-xs">
-                            G
-                          </div>
-                          <div className="text-left">
-                            <p className="text-xs font-semibold text-black dark:text-white">
-                              Đã kết nối Google
-                            </p>
-                            <p className="text-[10px] text-[#8E8E93]">
-                              Sẵn sàng đồng bộ trang tính
-                            </p>
-                          </div>
-                        </div>
 
-                        <button
-                          onClick={handleGoogleLogout}
-                          className="p-2 text-[#8E8E93] hover:text-ios-red rounded-lg hover:bg-ios-red/5 transition-colors"
-                          title="Đăng xuất"
-                        >
-                          <LogOut size={16} />
-                        </button>
+                    {loginError && (
+                      <p className="text-xs text-ios-red text-center font-medium">
+                        {loginError}
+                      </p>
+                    )}
+
+                    <button
+                      type="submit"
+                      className="w-full py-3.5 bg-ios-accent hover:bg-ios-accent/90 text-white font-bold text-sm rounded-xl shadow-xs transition-all active:scale-98 cursor-pointer"
+                    >
+                      Xác thực quản trị
+                    </button>
+                  </form>
+                </div>
+              ) : (
+                /* Unlocked Admin Panel Content */
+                <div className="flex-1 overflow-y-auto p-4 ios-scroll space-y-5">
+                  
+                  {/* 1. Auto Sync Configuration Card */}
+                  <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-xs border border-neutral-200/40 dark:border-neutral-800/40 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-[#34C759]/10 text-[#34C759]">
+                        <FileSpreadsheet size={22} />
+                      </div>
+                      <div>
+                        <h4 className="text-[15px] font-bold text-black dark:text-white">
+                          Liên kết Google Sheets tự động
+                        </h4>
+                        <p className="text-xs text-[#8E8E93]">
+                          Không cần đăng nhập, tự động đồng bộ ngay lập tức!
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3.5 pt-1.5">
+                      {/* Web App URL Input */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+                          Google Sheets Web App URL:
+                        </label>
+                        <input
+                          type="url"
+                          value={googleSheetsUrl}
+                          onChange={(e) => setGoogleSheetsUrl(e.target.value)}
+                          placeholder="https://script.google.com/macros/s/.../exec"
+                          className="w-full py-2.5 px-3 rounded-xl bg-[#F2F2F7] dark:bg-black border border-neutral-200/40 dark:border-neutral-800/40 text-xs font-mono focus:outline-hidden focus:ring-1 focus:ring-ios-accent"
+                        />
                       </div>
 
-                      {/* Spreadsheet Link if setup */}
-                      {spreadsheetId ? (
-                        <div className="p-3 border border-[#34C759]/30 bg-[#34C759]/5 rounded-xl space-y-1 text-left">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-bold text-[#34C759] uppercase tracking-wider">
-                              Trang tính đã kết nối
-                            </span>
-                            <a 
-                              href={`https://docs.google.com/spreadsheets/d/${spreadsheetId}`} 
-                              target="_blank" 
-                              rel="noreferrer"
-                              className="text-xs text-ios-accent font-semibold flex items-center gap-0.5 hover:underline"
-                            >
-                              <span>Mở Sheets</span>
-                              <ExternalLink size={12} />
-                            </a>
-                          </div>
-                          <p className="text-xs font-medium text-black dark:text-white truncate">
-                            {SPREADSHEET_NAME}
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="p-3 border border-[#FF9500]/30 bg-[#FF9500]/5 rounded-xl text-left">
-                          <p className="text-xs text-[#FF9500] font-semibold">
-                            Đang chuẩn bị trang tính...
-                          </p>
-                        </div>
-                      )}
+                      {/* Save Button */}
+                      <button
+                        onClick={handleSaveSettings}
+                        disabled={isSavingSettings}
+                        className="w-full py-2.5 bg-ios-accent text-white font-bold text-xs rounded-xl hover:bg-ios-accent/90 active:scale-98 transition-all flex items-center justify-center gap-1.5"
+                      >
+                        {isSavingSettings ? (
+                          <RefreshCw size={14} className="animate-spin" />
+                        ) : saveSuccess ? (
+                          <Check size={14} />
+                        ) : null}
+                        <span>{isSavingSettings ? 'Đang lưu...' : saveSuccess ? 'Đã lưu thành công!' : 'Lưu URL cấu hình'}</span>
+                      </button>
 
-                      {/* Sync triggers */}
-                      {spreadsheetId && (
-                        <div className="pt-1.5">
+                      {/* Apps Script Guide */}
+                      <div className="p-3 bg-[#F2F2F7] dark:bg-black/40 rounded-xl border border-neutral-200/30 dark:border-neutral-800/30 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-ios-accent uppercase tracking-wider">
+                            Hướng dẫn thiết lập (30 giây)
+                          </span>
                           <button
-                            onClick={handleSync}
-                            disabled={syncing || pendingCount === 0}
-                            className={`w-full py-3 px-4 font-bold text-sm rounded-xl transition-all flex items-center justify-center gap-2 shadow-xs ${
-                              pendingCount === 0
-                                ? 'bg-[#E5E5EA] dark:bg-[#2C2C2E] text-[#8E8E93] cursor-not-allowed'
-                                : 'bg-[#34C759] hover:bg-[#34C759]/90 text-white cursor-pointer active:scale-98'
-                            }`}
+                            onClick={copyToClipboard}
+                            className="text-[11px] text-neutral-500 hover:text-ios-accent flex items-center gap-1 transition-colors"
                           >
-                            {syncing ? (
-                              <>
-                                <RefreshCw size={16} className="animate-spin" />
-                                <span>Đang đồng bộ...</span>
-                              </>
-                            ) : syncStatus === 'success' ? (
-                              <>
-                                <Check size={16} />
-                                <span>Đã đồng bộ xong!</span>
-                              </>
-                            ) : (
-                              <>
-                                <CloudLightning size={16} />
-                                <span>Đồng bộ {pendingCount} liên hệ mới</span>
-                              </>
-                            )}
+                            <Clipboard size={12} />
+                            <span>{copied ? 'Đã copy!' : 'Sao chép mã'}</span>
                           </button>
-
-                          {pendingCount === 0 && (
-                            <p className="text-[11px] text-center text-[#8E8E93] mt-2 font-medium">
-                              ✓ Toàn bộ liên hệ đã được đồng bộ lên Google Sheets.
-                            </p>
-                          )}
                         </div>
-                      )}
+                        
+                        <ol className="text-[11px] text-[#8E8E93] list-decimal pl-4 space-y-1.5 leading-relaxed">
+                          <li>Mở <a href="https://sheets.google.com" target="_blank" rel="noreferrer" className="text-ios-accent underline inline-flex items-center gap-0.5">Google Sheets<ExternalLink size={10} /></a> và tạo 1 file trống mới.</li>
+                          <li>Chọn menu <span className="font-semibold text-black dark:text-white">Tiện ích mở rộng (Extensions)</span> → <span className="font-semibold text-black dark:text-white">Apps Script</span>.</li>
+                          <li>Xóa hết code có sẵn đi, dán toàn bộ đoạn code phía trên vào rồi lưu lại.</li>
+                          <li>Nhấn nút <span className="font-semibold text-black dark:text-white">Triển khai (Deploy)</span> ở góc trên bên phải → <span className="font-semibold text-black dark:text-white">Triển khai mới (New deployment)</span>.</li>
+                          <li>Chọn loại là <span className="font-semibold text-black dark:text-white">Ứng dụng Web (Web app)</span>.</li>
+                          <li>Đặt cấu hình: 
+                            <ul className="list-disc pl-4 mt-0.5 space-y-0.5">
+                              <li>Quyền thực thi (Execute as): <span className="font-semibold text-black dark:text-white">Tôi (Me)</span></li>
+                              <li>Ai có quyền truy cập (Who has access): <span className="font-semibold text-black dark:text-white">Bất kỳ ai (Anyone)</span></li>
+                            </ul>
+                          </li>
+                          <li>Nhấn nút Triển khai (Deploy), cấp quyền nếu có, sau đó <span className="font-semibold text-black dark:text-white">sao chép URL Ứng dụng Web</span> và dán vào ô nhập bên trên của bạn!</li>
+                        </ol>
+                      </div>
                     </div>
-                  )}
-                </div>
-
-                {/* 2. Contact List Card */}
-                <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-xs border border-neutral-200/40 dark:border-neutral-800/40">
-                  <div className="px-4 py-3 border-b border-[#D1D1D6]/40 dark:border-[#38383A]/40 flex items-center justify-between">
-                    <span className="text-[13px] font-bold text-black dark:text-white">
-                      Danh sách liên hệ ({contacts.length})
-                    </span>
-                    <button
-                      onClick={fetchContacts}
-                      disabled={isLoading}
-                      className="p-1 text-ios-accent hover:opacity-80 transition-opacity"
-                    >
-                      <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
-                    </button>
                   </div>
 
-                  <div className="divide-y divide-[#D1D1D6]/30 dark:divide-[#38383A]/30 max-h-[250px] overflow-y-auto ios-scroll">
-                    {isLoading && contacts.length === 0 ? (
-                      <div className="p-8 text-center text-xs text-[#8E8E93]">
-                        Đang tải danh sách...
-                      </div>
-                    ) : contacts.length === 0 ? (
-                      <div className="p-8 text-center text-xs text-[#8E8E93]">
-                        Chưa có liên hệ nào được gửi.
-                      </div>
-                    ) : (
-                      contacts.map((c) => {
-                        const isSynced = syncedIds.includes(c.id);
-                        return (
-                          <div key={c.id} className="p-3 flex items-center justify-between text-left">
-                            <div className="min-w-0 flex-1 pr-2">
-                              <div className="flex items-center gap-1.5">
-                                <p className="text-sm font-bold text-black dark:text-white truncate">
-                                  {c.lastName} {c.firstName}
-                                </p>
-                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-                                  isSynced 
-                                    ? 'bg-[#34C759]/10 text-[#34C759]' 
-                                    : 'bg-[#FF9500]/10 text-[#FF9500]'
-                                }`}>
-                                  {isSynced ? 'Đã đồng bộ' : 'Chờ đồng bộ'}
-                                </span>
-                              </div>
+                  {/* 2. Submissions list */}
+                  <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-xs border border-neutral-200/40 dark:border-neutral-800/40">
+                    <div className="px-4 py-3 border-b border-[#D1D1D6]/40 dark:border-[#38383A]/40 flex items-center justify-between">
+                      <span className="text-[13px] font-bold text-black dark:text-white">
+                        Danh sách liên hệ đã gửi ({contacts.length})
+                      </span>
+                      <button
+                        onClick={loadSettingsAndContacts}
+                        disabled={isLoading}
+                        className="p-1 text-ios-accent hover:opacity-80 transition-opacity"
+                      >
+                        <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
+                      </button>
+                    </div>
+
+                    <div className="divide-y divide-[#D1D1D6]/30 dark:divide-[#38383A]/30 max-h-[220px] overflow-y-auto ios-scroll">
+                      {contacts.length === 0 ? (
+                        <div className="p-8 text-center text-xs text-[#8E8E93]">
+                          Chưa có liên hệ nào được gửi tới máy chủ.
+                        </div>
+                      ) : (
+                        contacts.map((c) => (
+                          <div key={c.id} className="p-3 flex items-start justify-between text-left gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-bold text-black dark:text-white truncate">
+                                {c.lastName} {c.firstName} {c.pronouns && <span className="text-xs font-normal text-[#8E8E93] ml-1">({c.pronouns})</span>}
+                              </p>
                               
                               {c.phones.length > 0 && c.phones[0].value && (
-                                <p className="text-[11px] text-[#8E8E93] truncate mt-0.5">
-                                  {c.phones[0].label}: {c.phones[0].value}
+                                <p className="text-[11px] text-neutral-500 mt-1">
+                                  📞 {c.phones.map(p => `${p.label}: ${p.value}`).join(' | ')}
+                                </p>
+                              )}
+
+                              {c.emails.length > 0 && c.emails[0].value && (
+                                <p className="text-[11px] text-neutral-500 mt-0.5">
+                                  ✉ {c.emails.map(e => `${e.label}: ${e.value}`).join(' | ')}
+                                </p>
+                              )}
+
+                              {c.notes && (
+                                <p className="text-[11px] text-neutral-500 italic mt-1 bg-neutral-50 dark:bg-neutral-900 p-1.5 rounded-lg">
+                                  📝 {c.notes}
                                 </p>
                               )}
                               
                               {c.talkToHuy && (
-                                <p className="text-[10px] text-[#34C759] font-medium mt-0.5">
-                                  ♥ Muốn nói chuyện với Huy
+                                <p className="text-[10px] text-ios-accent font-semibold mt-1">
+                                  ❤️ Muốn nói chuyện với Huy!
                                 </p>
                               )}
+
+                              <p className="text-[9px] text-[#8E8E93] mt-1.5">
+                                Đã gửi lúc: {new Date(c.createdAt).toLocaleString('vi-VN')}
+                              </p>
                             </div>
 
                             <button
                               onClick={() => handleDeleteContact(c.id)}
-                              className="p-2 text-[#8E8E93] hover:text-ios-red rounded-lg hover:bg-ios-red/5 transition-colors"
-                              title="Xóa khỏi hệ thống"
+                              className="p-1.5 text-[#8E8E93] hover:text-ios-red rounded-lg hover:bg-ios-red/5 transition-colors shrink-0"
+                              title="Xóa liên hệ"
                             >
-                              <Trash2 size={15} />
+                              <Trash2 size={14} />
                             </button>
                           </div>
-                        );
-                      })
-                    )}
+                        ))
+                      )}
+                    </div>
                   </div>
-                </div>
 
-              </div>
+                  {/* 3. Security Settings Card */}
+                  <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-xs border border-neutral-200/40 dark:border-neutral-800/40 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-ios-red/10 text-ios-red">
+                        <KeyRound size={20} />
+                      </div>
+                      <div>
+                        <h4 className="text-[14px] font-bold text-black dark:text-white">
+                          Mã bảo mật Admin (Passcode)
+                        </h4>
+                        <p className="text-xs text-[#8E8E93]">
+                          Thay đổi mã PIN truy cập màn hình này
+                        </p>
+                      </div>
+                    </div>
+
+                    <form onSubmit={handleUpdatePasscode} className="flex gap-2 pt-1">
+                      <input
+                        type="text"
+                        placeholder="Mã PIN mới (ví dụ: 5555)"
+                        value={newPasscodeInput}
+                        onChange={(e) => setNewPasscodeInput(e.target.value)}
+                        className="flex-1 py-2 px-3 rounded-xl bg-[#F2F2F7] dark:bg-black border border-neutral-200/40 dark:border-neutral-800/40 text-xs font-mono focus:outline-hidden focus:ring-1 focus:ring-ios-accent"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isUpdatingPasscode}
+                        className="px-4 bg-neutral-200 dark:bg-[#2C2C2E] text-black dark:text-white font-bold text-xs rounded-xl hover:opacity-90 active:scale-95 transition-all shrink-0"
+                      >
+                        {isUpdatingPasscode ? 'Đang cập nhật...' : 'Đổi mã'}
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Lock Admin Panel Button */}
+                  <div className="pt-2">
+                    <button
+                      onClick={handleLockAdmin}
+                      className="w-full py-3 bg-neutral-200 dark:bg-[#2C2C2E] hover:bg-neutral-300 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <Lock size={12} />
+                      <span>Khóa quyền Quản trị (Đăng xuất)</span>
+                    </button>
+                  </div>
+
+                </div>
+              )}
 
               {/* Close Button Footer */}
-              <div className="p-4 bg-white dark:bg-[#1E1E1E] border-t border-[#D1D1D6]/40 dark:border-[#38383A]/40 shrink-0">
+              <div className="p-4 bg-white dark:bg-[#1C1C1E] border-t border-[#D1D1D6]/40 dark:border-[#38383A]/40 shrink-0">
                 <button
                   type="button"
                   onClick={onClose}

@@ -2,7 +2,7 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, query } from "firebase/firestore";
+import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, query, getDoc, setDoc } from "firebase/firestore";
 
 const app = express();
 app.use(express.json());
@@ -19,6 +19,44 @@ try {
 } catch (error) {
   console.error("Failed to initialize Firestore in API:", error);
 }
+
+// API: Get settings
+app.get("/api/settings", async (req, res) => {
+  try {
+    if (!db) {
+      return res.json({ googleSheetsUrl: "", adminPasscode: "1234" });
+    }
+    const settingsRef = doc(db, "settings", "config");
+    const docSnap = await getDoc(settingsRef);
+    if (docSnap.exists()) {
+      res.json(docSnap.data());
+    } else {
+      res.json({ googleSheetsUrl: "", adminPasscode: "1234" });
+    }
+  } catch (error: any) {
+    console.error("Error reading settings:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API: Save settings
+app.post("/api/settings", async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(500).json({ error: "Database not configured on server" });
+    }
+    const { googleSheetsUrl, adminPasscode } = req.body;
+    const settingsRef = doc(db, "settings", "config");
+    await setDoc(settingsRef, {
+      googleSheetsUrl: googleSheetsUrl || "",
+      adminPasscode: adminPasscode || "1234"
+    }, { merge: true });
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Error saving settings:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // API: Get all contacts
 app.get("/api/contacts", async (req, res) => {
@@ -76,11 +114,45 @@ app.post("/api/contacts", async (req, res) => {
     
     const contactsRef = collection(db, "contacts");
     const docRef = await addDoc(contactsRef, newContact);
-    
-    res.status(201).json({
+    const savedContact = {
       id: docRef.id,
       ...newContact
-    });
+    };
+
+    // Auto-forward contact to Google Sheets Apps Script Web App if configured
+    try {
+      const settingsRef = doc(db, "settings", "config");
+      const settingsSnap = await getDoc(settingsRef);
+      if (settingsSnap.exists()) {
+        const { googleSheetsUrl } = settingsSnap.data();
+        if (googleSheetsUrl && googleSheetsUrl.trim().startsWith("https://script.google.com")) {
+          const phonesStr = newContact.phones.map((p: any) => `${p.label}: ${p.value}`).join(", ");
+          const emailsStr = newContact.emails.map((e: any) => `${e.label}: ${e.value}`).join(", ");
+          
+          // Execute server-side post to the Apps Script
+          await fetch(googleSheetsUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              firstName: newContact.firstName,
+              lastName: newContact.lastName,
+              pronouns: newContact.pronouns,
+              phones: phonesStr,
+              emails: emailsStr,
+              notes: newContact.notes,
+              talkToHuy: newContact.talkToHuy ? "Có" : "Không",
+              createdAt: newContact.createdAt
+            })
+          });
+        }
+      }
+    } catch (sheetError) {
+      console.error("Error auto-syncing to Google Sheets URL:", sheetError);
+    }
+    
+    res.status(201).json(savedContact);
   } catch (error: any) {
     console.error("Error saving contact to Firestore:", error);
     res.status(500).json({ error: error.message });
