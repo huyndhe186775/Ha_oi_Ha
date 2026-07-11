@@ -33,11 +33,7 @@ export default function App() {
   });
 
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    const saved = localStorage.getItem('theme');
-    if (saved) return saved === 'dark';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  });
+  const isDarkMode = true;
 
   // Modal / Sheet States
   const [activeLabelPicker, setActiveLabelPicker] = useState<{
@@ -78,18 +74,13 @@ export default function App() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync Dark Mode Class with state
+  // Set Dark Mode Class permanently
   useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  }, [isDarkMode]);
+    document.documentElement.classList.add('dark');
+    localStorage.setItem('theme', 'dark');
+  }, []);
 
-  const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
+  const toggleDarkMode = () => {};
 
   // Check if form has any changes
   const checkHasChanges = (): boolean => {

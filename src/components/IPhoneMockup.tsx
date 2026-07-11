@@ -70,17 +70,6 @@ export default function IPhoneMockup({ children, isDarkMode, toggleDarkMode }: I
             </div>
           </div>
 
-          {/* Quick manual theme control widget - Desktop Only */}
-          <div className="hidden md:flex absolute right-4 top-[50px] z-30">
-            <button
-              onClick={toggleDarkMode}
-              className="p-1.5 rounded-full bg-white/85 dark:bg-neutral-800/85 backdrop-blur-md shadow-sm border border-neutral-200/40 dark:border-neutral-700/40 hover:scale-105 active:scale-95 transition-all text-neutral-700 dark:text-neutral-200"
-              title={isDarkMode ? 'Chuyển sang Chế độ sáng' : 'Chuyển sang Chế độ tối'}
-            >
-              {isDarkMode ? <Sun size={15} /> : <Moon size={15} />}
-            </button>
-          </div>
-
           {/* Main App Content Container */}
           <div className="flex-1 overflow-hidden relative flex flex-col">
             {children}
@@ -90,14 +79,6 @@ export default function IPhoneMockup({ children, isDarkMode, toggleDarkMode }: I
           <div className="hidden md:block absolute bottom-1.5 left-1/2 -translate-x-1/2 w-[125px] h-[4.5px] bg-neutral-900 dark:bg-neutral-200/60 rounded-full z-40 opacity-60 hover:opacity-100 transition-opacity" />
         </div>
       </div>
-
-      {/* Floating Theme Switcher for Mobile Layout (only visible below md) */}
-      <button
-        onClick={toggleDarkMode}
-        className="md:hidden fixed bottom-6 right-6 p-4 rounded-full bg-ios-accent text-white shadow-xl hover:scale-105 active:scale-95 transition-all z-50 flex items-center justify-center"
-      >
-        {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-      </button>
     </div>
   );
 }
