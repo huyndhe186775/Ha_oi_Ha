@@ -45,13 +45,25 @@ export default function App() {
 
   const [isDiscardConfirmOpen, setIsDiscardConfirmOpen] = useState(false);
   const [isJSONModalOpen, setIsJSONModalOpen] = useState(false);
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const [isAdminOpen, setIsAdminOpen] = useState(() => {
+    return localStorage.getItem('is_admin_open_pending') === 'true';
+  });
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Initialize Firebase Auth listener on load
   useEffect(() => {
-    const unsubscribe = initAuth();
+    const unsubscribe = initAuth(
+      (user, token) => {
+        if (localStorage.getItem('is_admin_open_pending') === 'true') {
+          setIsAdminOpen(true);
+          localStorage.removeItem('is_admin_open_pending');
+        }
+      },
+      () => {
+        // Handle auth failure if needed
+      }
+    );
     return () => {
       if (typeof unsubscribe === 'function') {
         unsubscribe();

@@ -15,7 +15,7 @@ import {
   ChevronRight,
   LogOut
 } from 'lucide-react';
-import { googleSignIn, logout, getAccessToken } from '../lib/firebase';
+import { googleSignIn, logout, getAccessToken, getCurrentUser } from '../lib/firebase';
 import { findSpreadsheet, createSpreadsheet, appendContactsToSheet, SyncContact } from '../lib/googleSheets';
 
 const SPREADSHEET_NAME = 'Danh sách liên hệ iOS App';
@@ -71,8 +71,16 @@ export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
     if (isOpen) {
       fetchContacts();
       const token = getAccessToken();
+      const user = getCurrentUser();
       if (token) {
         setAccessToken(token);
+        if (user) {
+          setGoogleUser(user);
+        }
+        // Auto-configure spreadsheet if we have a token but haven't saved an ID yet
+        if (!spreadsheetId) {
+          handleSetupSpreadsheet(token);
+        }
       }
     }
   }, [isOpen]);
