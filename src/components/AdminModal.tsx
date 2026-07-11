@@ -197,9 +197,6 @@ export default function AdminModal({ isOpen, onClose }: AdminModalProps) {
                     <p className="text-xs text-[#8E8E93] leading-relaxed">
                       Để bảo vệ sự riêng tư của mọi người, vui lòng nhập mã PIN bảo mật để xem và quản lý liên hệ.
                     </p>
-                    <p className="text-[11px] text-ios-accent bg-ios-accent/5 py-1 px-2.5 rounded-lg inline-block font-medium mt-1">
-                      Mã mặc định: <span className="font-bold">1234</span>
-                    </p>
                   </div>
 
                   <form onSubmit={handleUnlock} className="w-full space-y-4 max-w-[280px]">

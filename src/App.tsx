@@ -74,10 +74,12 @@ export default function App() {
   // Validation States
   const [errors, setErrors] = useState<{
     nameRequired: boolean;
+    phoneRequired: boolean;
     invalidEmails: { [id: string]: boolean };
     invalidPhones: { [id: string]: boolean };
   }>({
     nameRequired: false,
+    phoneRequired: false,
     invalidEmails: {},
     invalidPhones: {},
   });
@@ -113,6 +115,7 @@ export default function App() {
     setPhotoUrl(null);
     setErrors({
       nameRequired: false,
+      phoneRequired: false,
       invalidEmails: {},
       invalidPhones: {},
     });
@@ -169,7 +172,7 @@ export default function App() {
       setErrors(prev => {
         const copy = { ...prev.invalidPhones };
         delete copy[id];
-        return { ...prev, invalidPhones: copy };
+        return { ...prev, invalidPhones: copy, phoneRequired: false };
       });
     }
   };
@@ -211,6 +214,7 @@ export default function App() {
   // Form submission / Validation
   const handleDoneClick = async () => {
     const nameReq = !data.firstName.trim() && !data.lastName.trim();
+    const phoneReq = !data.phones.some(p => p.value.trim().length > 0);
     const badEmails: { [id: string]: boolean } = {};
     const badPhones: { [id: string]: boolean } = {};
 
@@ -230,15 +234,24 @@ export default function App() {
       }
     });
 
-    const hasErrors = nameReq || Object.keys(badEmails).length > 0 || Object.keys(badPhones).length > 0;
+    const hasErrors = nameReq || phoneReq || Object.keys(badEmails).length > 0 || Object.keys(badPhones).length > 0;
 
     if (hasErrors) {
       setErrors({
         nameRequired: nameReq,
+        phoneRequired: phoneReq,
         invalidEmails: badEmails,
         invalidPhones: badPhones,
       });
       // Trigger visual shake keyframes on form chassis
+      setShakeTrigger(true);
+      setTimeout(() => setShakeTrigger(false), 500);
+      return;
+    }
+
+    // Check if "Hà có thít nói chuyện với Huy" is ticked
+    if (!data.talkToHuy) {
+      setAlertMessage('Á à, bờ nóc');
       setShakeTrigger(true);
       setTimeout(() => setShakeTrigger(false), 500);
       return;
@@ -273,6 +286,7 @@ export default function App() {
       console.error('Lỗi khi gửi liên hệ:', err);
       setErrors({
         nameRequired: true,
+        phoneRequired: false,
         invalidEmails: {},
         invalidPhones: {},
       });
@@ -400,6 +414,20 @@ export default function App() {
             </motion.div>
           )}
 
+          {/* Validation Banner if phone missing */}
+          {errors.phoneRequired && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4 bg-ios-red/10 border border-ios-red/20 rounded-xl p-3 flex items-center gap-2.5"
+            >
+              <AlertCircle size={16} className="text-ios-red shrink-0" />
+              <span className="text-[13px] text-ios-red font-semibold">
+                Yêu cầu nhập ít nhất một số điện thoại
+              </span>
+            </motion.div>
+          )}
+
           {/* Core Name Card */}
           <FormCard>
             <StaticInput
@@ -501,7 +529,7 @@ export default function App() {
           </FormCard>
 
           {/* Special Option Section */}
-          <FormCard title="Trò chuyện">
+          <FormCard title="Messenger">
             <SwitchRow
               label="Hà có thít nói chuyện với Huy 🙄"
               value={data.talkToHuy}
